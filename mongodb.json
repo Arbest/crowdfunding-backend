@@ -1,0 +1,78 @@
+{
+  "_id": "userId",
+  "email": "jan@novak.cz", // Unique index
+ 
+  // Heslo zahashované
+  "passwordHash": "$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWrn96pRPQQzn...",
+ 
+  "firstName": "Jan",
+  "lastName": "Novák",
+  "roles": ["user", "admin","founder"], // Důležité pro autorizaci ENUM
+  "createdAt": "Date",
+  "sesionToken":"$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWrn96pRPQQzn..."
+  "tokenExpirationDate":"Date"
+  "totalContributed": 15000
+}
+ 
+ 
+ 
+JSON projects
+{
+  "_id": "projectId",
+  "ownerId": "userId", // Reference na Usera (Founder)
+ 
+  // Základní info
+  "title": "Chytrý květináč 3000",
+ 
+  "description": "Dlouhý text s HTML/Markdown...",
+  "shortDescription": "Krátký text pro kartu na HP",
+  "category": "Technology", // Pro filtraci
+  "images": ["url1.jpg", "url2.jpg"], // První je cover
+ 
+  // Finance & Status
+  "targetAmount": 500000,
+  "currentAmount": 12500, // 🔥 DŮLEŽITÉ: Cache. Aktualizuje se s každým příspěvkem ($inc)
+  "currency": "CZK",
+  "status": "pending", // Enum: 'pending' (čeká), 'active' (na HP), 'ended', 'rejected'
+ 
+  // Časování
+  "createdAt": "Date",   // Pro řazení "Nejnovější"
+  "deadline": "Date",    // Kdy kampaň končí
+ 
+  // Odměny (Tiers)
+  "rewards": [
+    {
+      "id": "tier_1", // Unikátní ID v rámci pole (např. UUID)
+      "title": "Dobrý pocit",
+      "price": 100,
+      "description": "Poděkování na webu",
+      "limit": null, // Neomezeno
+      "backersCount": 50 // Počítadlo kolik lidí si to koupilo
+    },
+    {
+      "id": "tier_2", // UUID
+      "title": "Early Bird Květináč",
+      "price": 2500,
+      "description": "Květináč s 50% slevou",
+      "limit": 100, // Omezený počet kusů
+      "backersCount": 98
+    }
+  ]
+}
+ 
+JSON contributions
+{
+  "_id": "contributionId",
+  "userId": "ObjectId",    // Kdo přispěl (pokud přihlášen)
+  "projectId": "ObjectId", // Kam přispěl
+ 
+  // Finance
+  "amount": 2600, // Částka (může být vyšší než cena odměny)
+  "currency": "CZK",
+ 
+  // Co si vybral
+  "rewardId": "tier_2", // ID odměny z pole projects.rewards (nebo null, pokud jen daroval)
+ 
+  "status": "paid", // 'success', 'paid', 'refunded'
+  "createdAt": "Date"
+}
