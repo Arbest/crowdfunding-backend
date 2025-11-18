@@ -9,8 +9,8 @@
   "lastName": "Novák",
   "roles": ["user", "admin","founder"], // Důležité pro autorizaci ENUM
   "createdAt": "Date",
-  "sesionToken":"$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWrn96pRPQQzn..."
-  "tokenExpirationDate":"Date"
+  "sesionToken":"$2b$10$EixZaYVK1fsbw1ZfbX3OXePaWrn96pRPQQzn...",
+  "tokenExpirationDate":"Date",
   "totalContributed": 15000
 }
  

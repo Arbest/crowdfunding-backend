@@ -1,0 +1,177 @@
+// mongodb-schema.jsonc
+
+{
+  "users": {
+    "example": {
+      "_id": "ObjectId",
+
+      "email": "jan@novak.cz",            // unique
+      "passwordHash": "$2b$10$....",     // bcrypt/argon2
+
+      "firstName": "Jan",
+      "lastName": "Novák",
+
+      // role-based access
+      "roles": ["user", "founder"],      // "user" | "founder" | "admin"
+
+      "createdAt": "Date",
+      "updatedAt": "Date",
+
+      // volitelný agregovaný statistiky (CACHE)
+      "stats": {
+        "totalContributed": 15000,       // součet zaplacených contributions.amount
+        "totalProjectsOwned": 3          // počet projektů, kde je owner
+      }
+    }
+  },
+
+  "sessions": {
+    "example": {
+      "_id": "ObjectId",
+      "userId": "ObjectId",              // ref na users._id
+
+      "tokenHash": "hashed-random-token",// hash, ne plaintext
+      "expiresAt": "Date",
+
+      "createdAt": "Date",
+      "ip": "192.168.0.1",
+      "userAgent": "Mozilla/5.0 ..."
+    }
+  },
+
+  "projects": {
+    "example": {
+      "_id": "ObjectId",
+      "ownerId": "ObjectId",                   // users._id (founder)
+
+      // obsah
+      "title": "Chytrý květináč 3000",
+      "shortDescription": "Krátký text pro kartu na HP",
+      "description": "Dlouhý text s HTML/Markdown...",
+      "category": "technology",                // ENUM: technology | design | art | ...
+      "images": ["url1.jpg", "url2.jpg"],      // první je cover
+
+      // finance
+      "targetAmount": 500000,
+      "currency": "CZK",
+
+      // stav kampaně
+      "status": "active",                      // "draft" | "pendingApproval" | "active" | "successful" | "failed" | "rejected"
+
+      // časování
+      "createdAt": "Date",
+      "updatedAt": "Date",
+      "publishedAt": "Date",                   // null, dokud není live
+      "deadlineAt": "Date",
+      "endedAt": "Date",                       // null, dokud neskončí
+
+      // agregovaný statistiky (CACHE)
+      "stats": {
+        "currentAmount": 12500,                // součet succeeded contributions.amount
+        "backerCount": 37                      // počet přispěvatelů (dle toho, jak se rozhodneš – unikátní userId nebo počet contributions)
+      },
+
+      // odměny (tiers)
+      "rewards": [
+        {
+          "id": "a7f7a9c4-1c3b-4e01-9c8b-9f81f2d0f1a1",  // UUID, NEMĚNIT, používá se v contributions.rewardId
+          "title": "Dobrý pocit",
+          "description": "Poděkování na webu",
+          "price": 100,
+          "currency": "CZK",
+          "limit": null,                                // null = neomezeně
+          "backersCount": 50,                           // CACHE – $inc při zaplacení / refundu
+          "createdAt": "Date",
+          "updatedAt": "Date"
+        },
+        {
+          "id": "8cdb35d0-3d3e-4a69-9c25-1e8e3f0af777",
+          "title": "Early Bird Květináč",
+          "description": "Květináč s 50% slevou",
+          "price": 2500,
+          "currency": "CZK",
+          "limit": 100,                                 // max počet kusů
+          "backersCount": 98,                           // kolik už to vzalo lidí
+          "createdAt": "Date",
+          "updatedAt": "Date"
+        }
+      ]
+    }
+  },
+
+  "contributions": {
+    "example": {
+      "_id": "ObjectId",
+
+      "userId": "ObjectId",                   // kdo přispěl (null = anonym)
+      "projectId": "ObjectId",               // na jaký projekt (projects._id)
+
+      // vybraná odměna (může být null)
+      "rewardId": "8cdb35d0-3d3e-4a69-9c25-1e8e3f0af777",
+
+      // finance
+      "amount": 2600,                        // zaplacená částka (může být > price rewardu)
+      "currency": "CZK",
+
+      // stav platby
+      "status": "succeeded",                 // "initiated" | "pending" | "succeeded" | "failed" | "refunded"
+
+      "createdAt": "Date",
+      "updatedAt": "Date",
+      "paidAt": "Date",                      // jen když status = succeeded
+
+      // data z platební brány
+      "payment": {
+        "provider": "stripe",                // 'stripe', 'gopay', ...
+        "intentId": "pi_123456789",          // payment intent / session ID
+        "chargeId": "ch_987654321",          // konkrétní platba
+        "raw": {
+          // volitelný tlustý JSON co si uložíš (card brand, last4, cokoliv)
+          "method": "card",
+          "brand": "visa",
+          "last4": "4242"
+        }
+      }
+    }
+  },
+
+  "paymentEvents": {
+    "example": {
+      "_id": "ObjectId",
+
+      "provider": "stripe",
+      "externalEventId": "evt_1PVbQF2eZvKYlo2C8t...",  // ID eventu z gateway (unique spolu s provider)
+
+      "type": "payment_intent.succeeded",             // typ eventu z brány
+      "payload": {
+        // celý raw JSON z webhooku
+      },
+
+      "signatureValid": true,                         // ověřenej podpis
+      "receivedAt": "Date",
+      "processedAt": "Date",                          // null, dokud neproběhne logika
+
+      "contributionId": "ObjectId"                    // když najdeš odpovídající contribution
+    }
+  },
+
+  "auditLogs": {
+    "example": {
+      "_id": "ObjectId",
+
+      "entity": {
+        "type": "project",                             // 'project' | 'reward' | 'contribution' | 'user'
+        "id": "ObjectId"                               // id entity; u rewardu můžeš mít rewardId v dataAfter
+      },
+
+      "action": "project.status_changed",              // např. 'project.created', 'contribution.succeeded'
+      "actorUserId": "ObjectId",                       // kdo to způsobil (null = systém/webhook)
+      "source": "dashboard",                           // 'dashboard' | 'public_api' | 'system' | 'webhook'
+
+      "dataBefore": {},                                // diff / snapshot před změnou
+      "dataAfter": {},                                 // snapshot po změně
+
+      "createdAt": "Date"
+    }
+  }
+}
