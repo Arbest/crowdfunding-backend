@@ -8,7 +8,10 @@
     "dev": "tsx watch src/api/server.ts",
     "start": "node dist/api/server.js",
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/scripts/test-api.ts",
+    "test:verbose": "tsx src/scripts/test-api-verbose.ts",
+    "seed": "tsx src/scripts/seed-database.ts"
   },
   "keywords": ["crowdfunding", "mongodb", "typescript"],
   "author": "",
