@@ -1,9 +1,17 @@
 import crypto from 'crypto';
+import Stripe from 'stripe';
 import { PaymentEvent } from '../models/PaymentEvent.js';
 import { Contribution } from '../models/Contribution.js';
+import { Project } from '../models/Project.js';
 import { AppError } from '../api/middlewares/errorHandler.js';
-import { PaymentProvider } from '../types/index.js';
+import { PaymentProvider, ContributionStatus } from '../types/index.js';
 import * as contributionService from './contributionService.js';
+
+// Initialize Stripe client
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey
+  ? new Stripe(stripeSecretKey)
+  : null;
 
 interface WebhookPayload {
   type: string;
@@ -140,16 +148,102 @@ export async function createPaymentIntent(contributionId: string): Promise<{ cli
     throw new AppError(404, 'Contribution not found', 'CONTRIBUTION_NOT_FOUND');
   }
 
-  // In real implementation, this would call Stripe API
-  // For now, return mock data
-  const mockClientSecret = `pi_${crypto.randomBytes(16).toString('hex')}_secret_${crypto.randomBytes(16).toString('hex')}`;
+  // If contribution already has a payment intent, return existing clientSecret
+  if (contribution.payment?.intentId && contribution.status === ContributionStatus.INITIATED) {
+    // Retrieve existing payment intent to get clientSecret
+    if (stripe) {
+      try {
+        const existingIntent = await stripe.paymentIntents.retrieve(contribution.payment.intentId);
+        if (existingIntent.client_secret) {
+          return { clientSecret: existingIntent.client_secret };
+        }
+      } catch {
+        // Intent doesn't exist or expired, create new one
+      }
+    }
+  }
 
-  // Store intent ID on contribution
-  contribution.payment = {
-    provider: PaymentProvider.STRIPE,
-    intentId: mockClientSecret.split('_secret_')[0],
-  };
-  await contribution.save();
+  // Check if Stripe is configured
+  if (!stripe) {
+    throw new AppError(500, 'Payment provider not configured', 'PAYMENT_PROVIDER_NOT_CONFIGURED');
+  }
 
-  return { clientSecret: mockClientSecret };
+  // Get project for metadata
+  const project = await Project.findById(contribution.projectId);
+
+  // Convert amount to smallest currency unit (e.g., cents for USD, haléře for CZK)
+  const amountInSmallestUnit = Math.round(contribution.amount * 100);
+
+  try {
+    // Create Stripe PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInSmallestUnit,
+      currency: contribution.currency.toLowerCase(),
+      metadata: {
+        contributionId: contribution._id.toString(),
+        projectId: contribution.projectId.toString(),
+        projectTitle: project?.title || 'Unknown Project',
+        rewardId: contribution.rewardId || '',
+      },
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
+
+    if (!paymentIntent.client_secret) {
+      throw new AppError(500, 'Failed to create payment intent', 'PAYMENT_INTENT_CREATION_FAILED');
+    }
+
+    // Store intent ID on contribution
+    contribution.payment = {
+      provider: PaymentProvider.STRIPE,
+      intentId: paymentIntent.id,
+    };
+    contribution.status = ContributionStatus.PENDING;
+    await contribution.save();
+
+    return { clientSecret: paymentIntent.client_secret };
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeError) {
+      console.error('Stripe error:', error.message);
+      throw new AppError(400, `Payment error: ${error.message}`, 'STRIPE_ERROR');
+    }
+    throw error;
+  }
+}
+
+// Create refund for a contribution
+export async function createRefund(contributionId: string): Promise<void> {
+  const contribution = await Contribution.findById(contributionId);
+
+  if (!contribution) {
+    throw new AppError(404, 'Contribution not found', 'CONTRIBUTION_NOT_FOUND');
+  }
+
+  if (contribution.status !== ContributionStatus.SUCCEEDED) {
+    throw new AppError(400, 'Can only refund succeeded contributions', 'INVALID_CONTRIBUTION_STATUS');
+  }
+
+  if (!contribution.payment?.intentId) {
+    throw new AppError(400, 'No payment intent found', 'NO_PAYMENT_INTENT');
+  }
+
+  if (!stripe) {
+    throw new AppError(500, 'Payment provider not configured', 'PAYMENT_PROVIDER_NOT_CONFIGURED');
+  }
+
+  try {
+    await stripe.refunds.create({
+      payment_intent: contribution.payment.intentId,
+    });
+
+    // Mark contribution as refunded
+    await contributionService.markContributionRefunded(contribution._id.toString());
+  } catch (error) {
+    if (error instanceof Stripe.errors.StripeError) {
+      console.error('Stripe refund error:', error.message);
+      throw new AppError(400, `Refund error: ${error.message}`, 'STRIPE_REFUND_ERROR');
+    }
+    throw error;
+  }
 }

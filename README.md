@@ -183,8 +183,76 @@ NODE_ENV=development
 CORS_ORIGIN=http://localhost:3000
 
 # Stripe
+STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
 ```
+
+## Stripe Setup
+
+### 1. Vytvoření Stripe účtu
+
+1. Registruj se na [stripe.com](https://stripe.com)
+2. Přejdi do **Developers > API keys**
+3. Zkopíruj **Secret key** (`sk_test_...`) do `.env` jako `STRIPE_SECRET_KEY`
+
+### 2. Frontend konfigurace
+
+V `.env` frontendu přidej **Publishable key** (`pk_test_...`):
+
+```env
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+```
+
+### 3. Webhook pro lokální vývoj
+
+Pro zpracování platebních událostí (succeeded, failed) potřebuješ webhook. Pro lokální vývoj použij Stripe CLI:
+
+```bash
+# Instalace Stripe CLI
+# macOS
+brew install stripe/stripe-cli/stripe
+
+# Windows (Scoop)
+scoop install stripe
+
+# Login
+stripe login
+
+# Forwardování webhooků na lokální server
+stripe listen --forward-to localhost:4000/api/payments/webhook/stripe
+```
+
+Stripe CLI vypíše webhook signing secret (`whsec_...`), který vlož do `.env`:
+
+```env
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+```
+
+### 4. Testování plateb
+
+Použij testovací karty:
+
+| Číslo karty | Výsledek |
+|-------------|----------|
+| `4242 4242 4242 4242` | Úspěšná platba |
+| `4000 0000 0000 3220` | 3D Secure autentizace |
+| `4000 0000 0000 9995` | Zamítnutá platba |
+
+Ostatní údaje:
+- **Expirace:** Jakékoliv budoucí datum (např. 12/34)
+- **CVC:** Jakékoliv 3 číslice (např. 123)
+- **ZIP:** Jakékoliv (např. 12345)
+
+### 5. Produkční nasazení
+
+Pro produkci:
+
+1. Aktivuj Stripe účet (KYC verifikace)
+2. Přepni na **Live keys** v Stripe Dashboard
+3. Vytvoř produkční webhook endpoint v **Developers > Webhooks**
+4. Nastav URL: `https://tvoje-domena.com/api/payments/webhook/stripe`
+5. Vyber events: `payment_intent.succeeded`, `payment_intent.payment_failed`
+6. Zkopíruj produkční webhook secret do produkčního `.env`
 
 ## Scripts
 

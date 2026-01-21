@@ -55,13 +55,41 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   }
 }
 
-export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  try {
+    const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
 
-  if (!token) {
-    return next();
+    if (!token) {
+      return next();
+    }
+
+    // Find session by hashed token
+    const tokenHash = hashToken(token);
+    const session = await Session.findOne({
+      tokenHash,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!session) {
+      // Session expired or invalid, continue without user
+      return next();
+    }
+
+    // Get user
+    const user = await User.findById(session.userId);
+    if (!user) {
+      // User not found, continue without user
+      return next();
+    }
+
+    // Attach to request
+    req.user = user;
+    req.sessionId = session._id.toString();
+
+    next();
+  } catch (error) {
+    // On any error, continue without user (don't block the request)
+    console.error('Optional auth error:', error);
+    next();
   }
-
-  // If token exists, try to authenticate
-  authenticate(req, _res, next);
 }

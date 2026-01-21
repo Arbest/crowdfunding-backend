@@ -206,3 +206,54 @@ export async function requestRefund(contributionId: string, userId: string): Pro
 
   return contribution;
 }
+
+export async function markContributionRefunded(contributionId: string): Promise<IContributionDocument> {
+  const contribution = await Contribution.findById(contributionId);
+
+  if (!contribution) {
+    throw new AppError(404, 'Contribution not found', 'CONTRIBUTION_NOT_FOUND');
+  }
+
+  if (contribution.status === ContributionStatus.REFUNDED) {
+    return contribution; // Idempotent
+  }
+
+  const dataBefore = contribution.toObject();
+
+  contribution.status = ContributionStatus.REFUNDED;
+  await contribution.save();
+
+  // Revert project stats
+  await Project.findByIdAndUpdate(contribution.projectId, {
+    $inc: {
+      'stats.currentAmount': -contribution.amount,
+      'stats.backerCount': -1,
+    },
+  });
+
+  // Revert reward backers count if applicable
+  if (contribution.rewardId) {
+    await Project.updateOne(
+      { _id: contribution.projectId, 'rewards.id': contribution.rewardId },
+      { $inc: { 'rewards.$.backersCount': -1 } }
+    );
+  }
+
+  // Revert user stats if logged in
+  if (contribution.userId) {
+    await User.findByIdAndUpdate(contribution.userId, {
+      $inc: { 'stats.totalContributed': -contribution.amount },
+    });
+  }
+
+  await auditService.log({
+    entity: { type: AuditEntityType.CONTRIBUTION, id: contribution._id },
+    action: 'contribution.refunded',
+    actorUserId: null, // System/webhook
+    source: AuditSource.WEBHOOK,
+    dataBefore,
+    dataAfter: contribution.toObject(),
+  });
+
+  return contribution;
+}
